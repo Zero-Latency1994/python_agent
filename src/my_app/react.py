@@ -1,5 +1,6 @@
 import json
 import os
+
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -12,8 +13,10 @@ if not api_key:
 base_url = os.getenv("OPENAI_BASE_URL")
 
 model = os.getenv("OPENAI_MODEL")
+if not model:
+    raise ValueError("请设置环境变量 OPENAI_MODEL")
 
-clinet = OpenAI(api_key=api_key, base_url=base_url)
+client = OpenAI(api_key=api_key, base_url=base_url)
 
 
 def get_info_on_ball_game(game_name):
@@ -61,13 +64,16 @@ def get_info_on_ball_game(game_name):
 tools = [
     {
         "type": "function",
-        "description": "获取球类比赛的基本信息和人员规模",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "gema_name": {"type": "string"},
-                "required": ["latitude"],
-                "additionalproperties": False,
+        "function": {
+            "name": "get_info_on_ball_game",
+            "description": "获取球类比赛的基本信息和人员规模",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "game_name": {"type": "string"},
+                },
+                "required": ["game_name"],
+                "additionalProperties": False,
             },
             "strict": True,
         },
@@ -75,7 +81,7 @@ tools = [
 ]
 
 
-system_promat = """
+system_prompt = """
 你运行在一个和思考，行动，观察和回答的循环，再循环结束时，你输出最终答案
 用 思考 来描述你对被问问题的想法
 用 操作 运行您可用的操作之一
@@ -85,19 +91,19 @@ system_promat = """
 
 
 message_history = []
-message_history.append({"role": "system", "content": system_promat})
+message_history.append({"role": "system", "content": system_prompt})
 
 
 def get_completion(message):
     message_history.append(message)
 
-    response = clinet.chat.completions.create(
+    response = client.chat.completions.create(
         model=model, messages=message_history, tools=tools
     )
 
-    response_dict = dict(response.choices[0].message)
-    message_history.append(response_dict)
-    return response_dict
+    assistant_message = response.choices[0].message
+    message_history.append(assistant_message.model_dump())
+    return assistant_message
 
 
 def agent(query):
@@ -106,16 +112,25 @@ def agent(query):
     next_message = {"role": "user", "content": query}
 
     while current_turns <= max_turns:
-
         message = get_completion(next_message)
-        print(message)
 
-        if message["tool_calls"]:
-            func_call_id = message["content"][0].id
-            func_kwargs = json.loads(message["tool_calls"][0].function.arguments)
+        print("-"*20)
+        print(message)
+        print("-"*20)
+
+
+
+        if message.tool_calls:
+            tool_call = message.tool_calls[0]
+            func_call_id = tool_call.id
+            func_kwargs = json.loads(tool_call.function.arguments)
             func_result = get_info_on_ball_game(**func_kwargs)
 
+            print("-"*20)
             print(f"观察：{func_result}")
+            print("-"*20)
+
+
             next_message = {
                 "role": "tool",
                 "tool_call_id": func_call_id,
@@ -123,6 +138,7 @@ def agent(query):
             }
         else:
             break
+        current_turns += 1
 
 
 if __name__ == "__main__":

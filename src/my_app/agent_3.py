@@ -16,8 +16,8 @@ def handle_tool_errors(request, handler):
         return ToolMessage(context=f"{str(e)}", tool_call_id=request.tool_call["id"])
 
 
-agent=create_agent(
-    model="",
-    tools=[search,get_weather],
-    middleware=[handle_tool_errors]
+agent = create_agent(
+    model="", tools=[search, get_weather], middleware=[handle_tool_errors]
 )
+
+print(agent)

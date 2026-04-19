@@ -156,6 +156,6 @@ if __name__ == "__main__":
     
     processor = ResumeProcessor()
     
-    my_pdf_path = "D://test//赵海洋-数据开发.pdf"
+    my_pdf_path = "D://test//XXX-数据开发.pdf"
     my_resume_id = "resume_001"
     processor.process_and_store(my_pdf_path, my_resume_id)

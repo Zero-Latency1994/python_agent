@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pdfplumber
+
 # 本地向量：使用 langchain-huggingface（勿用未安装的 langchain_community 回退，否则 IDE/运行都会报错）
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI  # 仍用 OpenAI 兼容类对接 MiniMax 等网关
@@ -14,46 +15,36 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class ResumeProcessor:
     def __init__(self, persist_directory="./db_resumes"):
-        
-        # --- 修改 2: 配置 HuggingFace Embeddings (本地运行) ---
-        # 指定一个中文或通用的开源 Embedding 模型
-        # 常用模型推荐：
-        # 英文: "sentence-transformers/all-MiniLM-L6-v2" (轻量级，速度快)
-        # 中文: "uer/sbert-base-chinese-nli" 或 "BAAI/bge-small-zh-v1.5"
-        
-        model_name = "uer/sbert-base-chinese-nli" # 你可以根据需要更改
-        
+
+        model_name = "uer/sbert-base-chinese-nli"
+
         print(f"正在加载本地 Embedding 模型: {model_name} ...")
         self.embeddings = HuggingFaceEmbeddings(model_name=model_name)
         print("本地 Embedding 模型加载完成")
 
-        # --- 保持不变: 初始化 LLM (对接 MiniMax) ---
-        # 注意：我们依然使用 ChatOpenAI，因为它兼容 OpenAI 格式的接口
         llm_kwargs = {
-            "model": os.getenv("OPENAI_MODEL", "abab6.5-chat"), # MiniMax 的模型名示例
+            "model": os.getenv("OPENAI_MODEL", "abab6.5-chat"),
             "temperature": 0,
         }
         if os.getenv("OPENAI_API_KEY"):
             llm_kwargs["api_key"] = os.getenv("OPENAI_API_KEY")
         if os.getenv("OPENAI_BASE_URL"):
             # 这里填 MiniMax 的 Base URL
-            llm_kwargs["base_url"] = os.getenv("OPENAI_BASE_URL") 
-        
+            llm_kwargs["base_url"] = os.getenv("OPENAI_BASE_URL")
+
         self.llm = ChatOpenAI(**llm_kwargs)
         print("LLM (MiniMax) 初始化完成")
 
-        # --- 保持不变: 初始化向量数据库 ---
         self.vector_db = Chroma(
             collection_name="resumes",
-            embedding_function=self.embeddings, # 现在使用的是本地 HuggingFace 模型
+            embedding_function=self.embeddings,
             persist_directory=persist_directory,
         )
         print("简历处理器已初始化")
 
-    # --- 以下函数保持不变 ---
-    
     def extract_text_from_pdf(self, file_path):
         text = ""
         with pdfplumber.open(file_path) as pdf:
@@ -103,17 +94,12 @@ class ResumeProcessor:
                 ("user", "简历内容：\n{resume_text}"),
             ]
         )
-        
-        # --- 修改 3: 移除 bind(force_no_tool=True) ---
-        # HuggingFaceEmbeddings 和 MiniMax 的兼容性问题主要在 Embedding 层，
-        # 这里的 LLM 调用保持原样，或者根据 MiniMax 的实际报错决定是否加 bind
+
         chain = prompt | self.llm
-        
+
         msg = chain.invoke({"resume_text": raw_text})
         raw_content = msg.content
-        
-        # ... (后续解析逻辑保持不变) ...
-        
+
         return self._parse_json_from_llm(raw_content)
 
     def process_and_store(self, file_path, resume_id):
@@ -131,7 +117,7 @@ class ResumeProcessor:
             return
 
         vector_content = f"{structured_data['skills']} {structured_data['experience']}"
-        
+
         self.vector_db.add_texts(
             texts=[vector_content],
             metadatas=[
@@ -148,14 +134,11 @@ class ResumeProcessor:
         )
         print(f" {structured_data['name']} 已成功存入向量数据库")
 
+
 if __name__ == "__main__":
-    # 确保你的 .env 文件里配置了 MiniMax 的参数
-    # OPENAI_API_KEY=你的MiniMaxKey
-    # OPENAI_BASE_URL=https://api.minimax.chat/v1
-    # OPENAI_MODEL=abab6.5-chat (或 MiniMax 对应的模型名)
-    
+
     processor = ResumeProcessor()
-    
+
     my_pdf_path = "D://test//XXX-数据开发.pdf"
     my_resume_id = "resume_001"
     processor.process_and_store(my_pdf_path, my_resume_id)
